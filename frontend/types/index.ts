@@ -4,11 +4,12 @@
 
 // API Request/Response Types
 export interface HandshakeRequest {
-  client_public_key: string; // base64 encoded
+  client_public_key?: string; // base64 encoded, optional - server will generate if not provided
 }
 
 export interface HandshakeResponse {
   server_public_key: string; // base64 encoded
+  client_public_key: string; // base64 encoded - returned so client can store it
   ciphertext: string; // base64 encoded
   session_token: string;
 }
