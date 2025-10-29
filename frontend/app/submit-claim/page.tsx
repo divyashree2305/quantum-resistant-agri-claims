@@ -17,6 +17,7 @@ import {
 } from '@mui/material';
 import { submitClaim } from '@/lib/api/claims';
 import { useSecurity } from '@/contexts/SecurityContext';
+import { useActivityLog } from '@/contexts/ActivityContext';
 import { formatFraudScore, getFraudScoreColor } from '@/lib/utils/formatters';
 import {
   validateClaimAmount,
@@ -28,6 +29,7 @@ import type { ClaimData } from '@/types';
 
 export default function SubmitClaimPage() {
   const { isSecure, initiateHandshake, status } = useSecurity();
+  const { addActivity } = useActivityLog();
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -102,11 +104,73 @@ export default function SubmitClaimPage() {
 
     setLoading(true);
 
+    addActivity({
+      type: 'claim_submit',
+      title: 'Claim Submission Started',
+      description: `Submitting claim for amount: $${formData.claim_amount}`,
+      status: 'pending',
+      details: {
+        claim_amount: formData.claim_amount,
+        location: formData.location,
+        timestamp: formData.timestamp,
+      },
+    });
+
     try {
+      addActivity({
+        type: 'fraud_detection',
+        title: 'AI Fraud Detection Running',
+        description: 'Analyzing claim with XGBoost model',
+        status: 'pending',
+        details: 'Extracting features and scoring claim for fraud risk...',
+      });
+
       const response = await submitClaim(formData);
+
+      addActivity({
+        type: 'fraud_detection',
+        title: 'Fraud Score Calculated',
+        description: `Fraud Score: ${formatFraudScore(response.fraud_score)}`,
+        status: 'completed',
+        details: {
+          fraud_score: response.fraud_score,
+          model_version: response.model_version,
+          interpretation: response.fraud_score > 70 
+            ? 'High risk - Manual review recommended'
+            : response.fraud_score > 40
+            ? 'Medium risk - Standard processing'
+            : 'Low risk - Fast track eligible',
+        },
+      });
+
+      addActivity({
+        type: 'log_entry',
+        title: 'Tamper-Evident Log Entry Created',
+        description: `Log Entry ID: ${response.log_entry_id}`,
+        status: 'completed',
+        details: {
+          log_entry_id: response.log_entry_id,
+          security: 'Hash chain linked to previous entry',
+          cryptographic_hash: 'SHA3-256',
+          integrity: 'Tamper-evident',
+        },
+      });
+
       setSuccess(true);
       setFraudScore(response.fraud_score);
       setLogEntryId(response.log_entry_id);
+      
+      addActivity({
+        type: 'claim_submit',
+        title: 'Claim Submitted Successfully',
+        description: 'Claim processed and logged to tamper-evident system',
+        status: 'completed',
+        details: {
+          log_entry_id: response.log_entry_id,
+          fraud_score: response.fraud_score,
+          model_version: response.model_version,
+        },
+      });
       
       // Reset form
       setFormData({
@@ -117,7 +181,17 @@ export default function SubmitClaimPage() {
       });
     } catch (err) {
       const error = err as { response?: { data?: { detail?: string } }; message?: string };
-      setError(error.response?.data?.detail || error.message || 'Failed to submit claim');
+      const errorMessage = error.response?.data?.detail || error.message || 'Failed to submit claim';
+      
+      addActivity({
+        type: 'claim_submit',
+        title: 'Claim Submission Failed',
+        description: `Error: ${errorMessage}`,
+        status: 'error',
+        details: errorMessage,
+      });
+      
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }

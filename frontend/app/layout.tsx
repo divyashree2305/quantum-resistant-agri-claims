@@ -5,6 +5,7 @@
 import React from 'react';
 import { Providers } from '@/components/common/Providers';
 import { NavBar } from '@/components/common/NavBar';
+import { ActivityPanel } from '@/components/common/ActivityPanel';
 
 export default function RootLayout({
   children,
@@ -17,6 +18,7 @@ export default function RootLayout({
         <Providers>
           <NavBar />
           {children}
+          <ActivityPanel />
         </Providers>
       </body>
     </html>

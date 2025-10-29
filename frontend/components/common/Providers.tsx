@@ -13,6 +13,7 @@ import { SessionProvider } from '@/contexts/SessionContext';
 import { SecurityProvider } from '@/contexts/SecurityContext';
 import { ThemeProvider, useTheme } from '@/contexts/ThemeContext';
 import { LanguageProvider } from '@/contexts/LanguageContext';
+import { ActivityProvider } from '@/contexts/ActivityContext';
 import { ErrorBoundary } from '@/components/common/ErrorBoundary';
 import { lightTheme, darkTheme } from '@/theme/theme';
 
@@ -37,13 +38,15 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <ErrorBoundary>
       <SessionProvider>
-        <SecurityProvider>
-          <ThemeProvider>
-            <LanguageProvider>
-              <ThemedApp>{children}</ThemedApp>
-            </LanguageProvider>
-          </ThemeProvider>
-        </SecurityProvider>
+        <ActivityProvider>
+          <SecurityProvider>
+            <ThemeProvider>
+              <LanguageProvider>
+                <ThemedApp>{children}</ThemedApp>
+              </LanguageProvider>
+            </ThemeProvider>
+          </SecurityProvider>
+        </ActivityProvider>
       </SessionProvider>
     </ErrorBoundary>
   );
