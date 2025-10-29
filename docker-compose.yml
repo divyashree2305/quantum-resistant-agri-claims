@@ -1,0 +1,209 @@
+services:
+  # Insurance Claim System Backend Application
+  insurance-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: insurance-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://insurance:insurance_password@postgres:5432/insurance_claims
+      - REDIS_URL=redis://redis:6379/0
+      - JWT_SECRET_KEY=7e3c5a9b8d2f1e6a0c4b8d3e5f9a2c7b1d6e8f0a3c5b9d2e7f1a4c8b6d5e9a0
+      - STORAGE_PATH=/app/storage
+      - LOG_LEVEL=INFO
+      - ENABLE_FRAUD_DETECTION=true
+      - MASTER_SEED=d8bdd9d9a1ffd2335a89b9b1047e0f739d7a3fb50447747fe9994db0bcfd24e0
+      - CORS_ORIGINS=http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000,http://insurance-frontend:3000
+    volumes:
+      - ./storage:/app/storage
+      - ./keys:/app/keys
+      - ./logs:/app/logs
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - insurance-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Frontend Application (Next.js)
+  insurance-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: insurance-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://insurance-backend:8000
+      - NODE_ENV=production
+    depends_on:
+      - insurance-backend
+    networks:
+      - insurance-network
+    restart: unless-stopped
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: insurance-postgres
+    environment:
+      - POSTGRES_DB=insurance_claims
+      - POSTGRES_USER=insurance
+      - POSTGRES_PASSWORD=insurance_password
+      - POSTGRES_INITDB_ARGS=--encoding=UTF-8 --lc-collate=C --lc-ctype=C
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init_db.sql:/docker-entrypoint-initdb.d/init_db.sql:ro
+    ports:
+      - "54320:5432"
+    networks:
+      - insurance-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U insurance -d insurance_claims"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache and Session Store
+  redis:
+    image: redis:7-alpine
+    container_name: insurance-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "63790:6379"
+    networks:
+      - insurance-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # Nginx Reverse Proxy (Optional)
+  nginx:
+    image: nginx:alpine
+    container_name: insurance-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./logs/nginx:/var/log/nginx
+    depends_on:
+      - insurance-backend
+    networks:
+      - insurance-network
+    restart: unless-stopped
+    profiles:
+      - production
+
+  # PostgreSQL Admin Interface (Development)
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: insurance-pgadmin
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@insurance.local
+      - PGADMIN_DEFAULT_PASSWORD=admin_password
+      - PGADMIN_CONFIG_SERVER_MODE=False
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    ports:
+      - "8080:80"
+    depends_on:
+      - postgres
+    networks:
+      - insurance-network
+    restart: unless-stopped
+    profiles:
+      - development
+
+  # Redis Admin Interface (Development)
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: insurance-redis-commander
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+      - REDIS_PASSWORD=redis_password
+    ports:
+      - "8081:8081"
+    depends_on:
+      - redis
+    networks:
+      - insurance-network
+    restart: unless-stopped
+    profiles:
+      - development
+
+  # Monitoring with Prometheus (Optional)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: insurance-prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - insurance-network
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+  # Grafana Dashboard (Optional)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: insurance-grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin_password
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - insurance-network
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+# Named Volumes
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  pgadmin_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+
+# Networks
+networks:
+  insurance-network:
+    driver: bridge
