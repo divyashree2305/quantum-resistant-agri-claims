@@ -1,0 +1,5 @@
+PQC Handshake (Kyber): The POST /handshake endpoint completed in an average of 27.72 ms.
+
+Claim Submission: The POST /claim/submit, including AI scoring and hash-chain logging, took an average of 79.39 ms.
+
+Checkpoint Generation: Generating a checkpoint for 1000 log entries, including Merkle tree generation and a Dilithium signature, took 84.75 ms.

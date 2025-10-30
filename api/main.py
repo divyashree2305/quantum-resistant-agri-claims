@@ -248,6 +248,80 @@ async def handshake(request: HandshakeRequest):
         )
 
 
+def _build_merkle_levels_from_entries(entries: list[LogEntry]) -> dict:
+    """Build Merkle levels (hex) from DB log entries using backend hash (crypto.hash_data)."""
+    if not entries:
+        # Return single level with EMPTY_TREE hash to mirror checkpoint module behavior
+        empty = crypto.hash_data(b"EMPTY_TREE").hex()
+        return {"levels": [[f"0x{empty}"]], "root": f"0x{empty}", "leaf_count": 0}
+
+    # Leaves are prev_hash of each log entry
+    level = [e.prev_hash for e in entries]
+    # convert to hex for API
+    levels_hex: list[list[str]] = [[f"0x{h.hex()}" for h in level]]
+
+    # Build up
+    current = level
+    while len(current) > 1:
+        next_level: list[bytes] = []
+        for i in range(0, len(current), 2):
+            if i + 1 < len(current):
+                combined = current[i] + current[i + 1]
+            else:
+                combined = current[i] + current[i]
+            parent = crypto.hash_data(combined)
+            next_level.append(parent)
+        levels_hex.append([f"0x{h.hex()}" for h in next_level])
+        current = next_level
+
+    root_hex = levels_hex[-1][0]
+    return {"levels": levels_hex, "root": root_hex, "leaf_count": len(entries)}
+
+
+@app.get("/audit/merkle-tree")
+async def get_merkle_tree(scope: str = Query("all", enum=["all", "since_last_checkpoint"])):
+    """
+    Return the current Merkle tree levels and root built from existing log entries.
+    - scope=all: use all log entries
+    - scope=since_last_checkpoint: use entries after the most recent checkpoint
+    """
+    try:
+        if scope == "since_last_checkpoint":
+            last = checkpoint.get_last_checkpoint()
+            last_max_id = 0
+            if last:
+                try:
+                    parts = last.entries_range.split("-")
+                    last_max_id = int(parts[-1])
+                except Exception:
+                    last_max_id = 0
+            # entries strictly after last_max_id
+            from models.database import get_session as get_db_session
+            db = get_db_session()
+            try:
+                entries = (
+                    db.query(LogEntry)
+                    .filter(LogEntry.id > last_max_id)
+                    .order_by(LogEntry.id.asc())
+                    .all()
+                )
+            finally:
+                db.close()
+        else:
+            from models.database import get_session as get_db_session
+            db = get_db_session()
+            try:
+                entries = db.query(LogEntry).order_by(LogEntry.id.asc()).all()
+            finally:
+                db.close()
+
+        result = _build_merkle_levels_from_entries(entries)
+        # also include simple leaves list for convenience
+        result["leaves"] = result["levels"][0] if result["levels"] else []
+        return JSONResponse(result)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to build Merkle tree: {str(e)}")
+
 @app.get("/claim/status/{log_entry_id}", response_model=ClaimStatusResponse)
 async def get_claim_status(
     log_entry_id: int,

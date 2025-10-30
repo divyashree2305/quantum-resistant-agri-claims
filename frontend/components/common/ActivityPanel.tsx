@@ -5,7 +5,7 @@
  * Displays real-time steps for handshake, claim submission, fraud detection, etc.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Drawer,
   Box,

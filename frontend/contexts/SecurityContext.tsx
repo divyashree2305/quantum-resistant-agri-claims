@@ -1,10 +1,6 @@
 'use client';
 
-/**
- * Security Context - Manages Kyber handshake state and security status
- */
-
-import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import  { createContext, useContext, useState, useCallback, ReactNode } from 'react';
 import { performHandshake } from '@/lib/api/handshake';
 import { useActivityLog } from '@/contexts/ActivityContext';
 import type { HandshakeStatus } from '@/types';
